@@ -117,6 +117,7 @@ struct Transaction {
           complete_cycle(tran.complete_cycle),
           is_write(tran.is_write) {}
     uint64_t addr;
+    uint64_t start_cycle;
     uint64_t added_cycle;
     uint64_t complete_cycle;
     bool is_write;
