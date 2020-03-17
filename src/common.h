@@ -119,6 +119,8 @@ struct Transaction {
     uint64_t addr;
     uint64_t start_cycle;
     uint64_t added_cycle;
+    uint64_t issue_cycle;
+    uint64_t schedule_cycle;
     uint64_t complete_cycle;
     bool is_write;
 

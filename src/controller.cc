@@ -211,6 +211,32 @@ void Controller::ScheduleTransaction() {
         auto cmd = TransToCommand(*it);
         if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
                                          cmd.Bank())) {
+
+            // update stats for all pending requests
+            if (cmd.IsWrite()) {
+                auto num_requests = pending_wr_q_.count(cmd.hex_addr);
+                while (num_requests > 0) {
+                    auto req = pending_wr_q_.find(cmd.hex_addr);
+                    req->second.schedule_cycle = clk_;
+        	    simple_stats_.AddValue("command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+        	    simple_stats_.AddValue("write_command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+                    num_requests -= 1;
+		}
+            } else {
+                auto num_requests = pending_rd_q_.count(cmd.hex_addr);
+                while (num_requests > 0) {
+                    auto req = pending_rd_q_.find(cmd.hex_addr);
+                    req->second.schedule_cycle = clk_;
+        	    simple_stats_.AddValue("command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+        	    simple_stats_.AddValue("read_command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+                    num_requests -= 1;
+                }
+            }
+
             if (!is_unified_queue_ && cmd.IsWrite()) {
                 // Enforce R->W dependency
                 if (pending_rd_q_.count(it->addr) > 0) {
@@ -244,6 +270,13 @@ void Controller::IssueCommand(const Command &cmd) {
         // if there are multiple reads pending return them all
         while (num_reads > 0) {
             auto it = pending_rd_q_.find(cmd.hex_addr);
+            it->second.issue_cycle = clk_;
+    	    simple_stats_.AddValue("queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+    	    simple_stats_.AddValue("read_queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+	    // sanity check to make sure we are recording schedule_cycle
+	    assert(it->second.schedule_cycle != 0);
             it->second.complete_cycle = clk_ + config_.read_delay;
             return_queue_.push_back(it->second);
             pending_rd_q_.erase(it);
@@ -256,6 +289,13 @@ void Controller::IssueCommand(const Command &cmd) {
             std::cerr << cmd.hex_addr << " not in write queue!" << std::endl;
             exit(1);
         }
+        it->second.issue_cycle = clk_;
+    	simple_stats_.AddValue("queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+    	simple_stats_.AddValue("write_queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+	// sanity check to make sure we are recording schedule_cycle
+	assert(it->second.schedule_cycle != 0);
         auto wr_lat = clk_ - it->second.added_cycle + config_.write_delay;
         simple_stats_.AddValue("write_latency", wr_lat);
         pending_wr_q_.erase(it);
