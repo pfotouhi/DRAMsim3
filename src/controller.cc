@@ -244,6 +244,9 @@ void Controller::IssueCommand(const Command &cmd) {
         // if there are multiple reads pending return them all
         while (num_reads > 0) {
             auto it = pending_rd_q_.find(cmd.hex_addr);
+            it->second.issue_cycle = clk_;
+    	    simple_stats_.AddValue("queuing_latency", it->second.issue_cycle - it->second.added_cycle);
+    	    simple_stats_.AddValue("read_queuing_latency", it->second.issue_cycle - it->second.added_cycle);
             it->second.complete_cycle = clk_ + config_.read_delay;
             return_queue_.push_back(it->second);
             pending_rd_q_.erase(it);
@@ -256,6 +259,9 @@ void Controller::IssueCommand(const Command &cmd) {
             std::cerr << cmd.hex_addr << " not in write queue!" << std::endl;
             exit(1);
         }
+        it->second.issue_cycle = clk_;
+    	simple_stats_.AddValue("queuing_latency", it->second.issue_cycle - it->second.added_cycle);
+    	simple_stats_.AddValue("write_queuing_latency", it->second.issue_cycle - it->second.added_cycle);
         auto wr_lat = clk_ - it->second.added_cycle + config_.write_delay;
         simple_stats_.AddValue("write_latency", wr_lat);
         pending_wr_q_.erase(it);
