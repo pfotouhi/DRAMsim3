@@ -161,7 +161,6 @@ bool Controller::WillAcceptTransaction(uint64_t hex_addr, bool is_write) const {
 bool Controller::AddTransaction(Transaction trans) {
     trans.added_cycle = clk_;
     simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
-    last_trans_clk_ = clk_;
 
     if (trans.is_write) {
         if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
@@ -174,12 +173,15 @@ bool Controller::AddTransaction(Transaction trans) {
         }
         trans.complete_cycle = clk_ + 1;
         return_queue_.push_back(trans);
+        last_trans_clk_ = clk_;
         return true;
     } else {  // read
+        simple_stats_.AddValue("interarrival_read_latency", clk_ - trans.start_cycle);
         // if in write buffer, use the write buffer value
         if (pending_wr_q_.count(trans.addr) > 0) {
             trans.complete_cycle = clk_ + 1;
             return_queue_.push_back(trans);
+            last_trans_clk_ = clk_;
             return true;
         }
         pending_rd_q_.insert(std::make_pair(trans.addr, trans));
@@ -190,6 +192,7 @@ bool Controller::AddTransaction(Transaction trans) {
                 read_queue_.push_back(trans);
             }
         }
+        last_trans_clk_ = clk_;
         return true;
     }
 }
