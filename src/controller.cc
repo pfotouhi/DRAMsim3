@@ -161,9 +161,11 @@ bool Controller::WillAcceptTransaction(uint64_t hex_addr, bool is_write) const {
 bool Controller::AddTransaction(Transaction trans) {
     trans.added_cycle = clk_;
     simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
+    simple_stats_.AddValue("stall_latency", clk_ - trans.start_cycle);
     last_trans_clk_ = clk_;
 
     if (trans.is_write) {
+        simple_stats_.AddValue("write_stall_latency", clk_ - trans.start_cycle);
         if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
             pending_wr_q_.insert(std::make_pair(trans.addr, trans));
             if (is_unified_queue_) {
@@ -176,6 +178,7 @@ bool Controller::AddTransaction(Transaction trans) {
         return_queue_.push_back(trans);
         return true;
     } else {  // read
+        simple_stats_.AddValue("read_stall_latency", clk_ - trans.start_cycle);
         // if in write buffer, use the write buffer value
         if (pending_wr_q_.count(trans.addr) > 0) {
             trans.complete_cycle = clk_ + 1;
