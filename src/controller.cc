@@ -161,7 +161,6 @@ bool Controller::WillAcceptTransaction(uint64_t hex_addr, bool is_write) const {
 bool Controller::AddTransaction(Transaction trans) {
     trans.added_cycle = clk_;
     simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
-    last_trans_clk_ = clk_;
 
     if (trans.is_write) {
         if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
@@ -174,12 +173,15 @@ bool Controller::AddTransaction(Transaction trans) {
         }
         trans.complete_cycle = clk_ + 1;
         return_queue_.push_back(trans);
+        last_trans_clk_ = clk_;
         return true;
     } else {  // read
+        simple_stats_.AddValue("interarrival_read_latency", clk_ - trans.start_cycle);
         // if in write buffer, use the write buffer value
         if (pending_wr_q_.count(trans.addr) > 0) {
             trans.complete_cycle = clk_ + 1;
             return_queue_.push_back(trans);
+            last_trans_clk_ = clk_;
             return true;
         }
         pending_rd_q_.insert(std::make_pair(trans.addr, trans));
@@ -190,6 +192,7 @@ bool Controller::AddTransaction(Transaction trans) {
                 read_queue_.push_back(trans);
             }
         }
+        last_trans_clk_ = clk_;
         return true;
     }
 }
@@ -244,6 +247,9 @@ void Controller::IssueCommand(const Command &cmd) {
         // if there are multiple reads pending return them all
         while (num_reads > 0) {
             auto it = pending_rd_q_.find(cmd.hex_addr);
+            it->second.issue_cycle = clk_;
+    	    simple_stats_.AddValue("queuing_latency", it->second.issue_cycle - it->second.added_cycle);
+    	    simple_stats_.AddValue("read_queuing_latency", it->second.issue_cycle - it->second.added_cycle);
             it->second.complete_cycle = clk_ + config_.read_delay;
             return_queue_.push_back(it->second);
             pending_rd_q_.erase(it);
@@ -256,6 +262,9 @@ void Controller::IssueCommand(const Command &cmd) {
             std::cerr << cmd.hex_addr << " not in write queue!" << std::endl;
             exit(1);
         }
+        it->second.issue_cycle = clk_;
+    	simple_stats_.AddValue("queuing_latency", it->second.issue_cycle - it->second.added_cycle);
+    	simple_stats_.AddValue("write_queuing_latency", it->second.issue_cycle - it->second.added_cycle);
         auto wr_lat = clk_ - it->second.added_cycle + config_.write_delay;
         simple_stats_.AddValue("write_latency", wr_lat);
         pending_wr_q_.erase(it);

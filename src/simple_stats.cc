@@ -66,6 +66,14 @@ SimpleStats::SimpleStats(const Config& config, int channel_id)
     InitHistoStat("write_latency", "Write cmd latency (cycles)", 0, 200, 10);
     InitHistoStat("interarrival_latency",
                   "Request interarrival latency (cycles)", 0, 100, 10);
+    InitHistoStat("interarrival_read_latency",
+                  "Request interarrival latency (cycles)", 0, 100, 10);
+    InitHistoStat("queuing_latency",
+                  "Request queuing  latency (cycles)", 0, 100, 10);
+    InitHistoStat("read_queuing_latency",
+                  "Read request queuing  latency (cycles)", 0, 100, 10);
+    InitHistoStat("write_queuing_latency",
+                  "Write request queuing  latency (cycles)", 0, 100, 10);
 
     // some irregular stats
     InitStat("average_bandwidth", "calculated", "Average bandwidth");
@@ -75,6 +83,14 @@ SimpleStats::SimpleStats(const Config& config, int channel_id)
              "Average read request latency (cycles)");
     InitStat("average_interarrival", "calculated",
              "Average request interarrival latency (cycles)");
+    InitStat("average_read_interarrival", "calculated",
+             "Average read request interarrival latency (cycles)");
+    InitStat("average_queuing", "calculated",
+             "Average queuing latency (cycles)");
+    InitStat("average_read_queuing", "calculated",
+             "Average read queuing latency (cycles)");
+    InitStat("average_write_queuing", "calculated",
+             "Average write queuing latency (cycles)");
 }
 
 void SimpleStats::AddValue(const std::string name, const int value) {
@@ -403,6 +419,14 @@ void SimpleStats::UpdateEpochStats() {
         GetHistoAvg(epoch_histo_counts_.at("read_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(epoch_histo_counts_.at("interarrival_latency"));
+    calculated_["average_read_interarrival"] =
+        GetHistoAvg(epoch_histo_counts_.at("interarrival_read_latency"));
+    calculated_["average_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("queuing_latency"));
+    calculated_["average_read_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("read_queuing_latency"));
+    calculated_["average_write_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("write_queuing_latency"));
 
     UpdatePrints(true);
     for (auto& it : epoch_counters_) {
@@ -465,6 +489,14 @@ void SimpleStats::UpdateFinalStats() {
         GetHistoAvg(histo_counts_.at("read_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(histo_counts_.at("interarrival_latency"));
+    calculated_["average_read_interarrival"] =
+        GetHistoAvg(histo_counts_.at("interarrival_read_latency"));
+    calculated_["average_queuing"] =
+        GetHistoAvg(histo_counts_.at("queuing_latency"));
+    calculated_["average_read_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("read_queuing_latency"));
+    calculated_["average_write_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("write_queuing_latency"));
 
     UpdatePrints(false);
     return;

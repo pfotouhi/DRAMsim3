@@ -30,7 +30,7 @@ class BaseDRAMSystem {
 
     virtual bool WillAcceptTransaction(uint64_t hex_addr,
                                        bool is_write) const = 0;
-    virtual bool AddTransaction(uint64_t hex_addr, bool is_write) = 0;
+    virtual bool AddTransaction(uint64_t hex_addr, uint64_t start, bool is_write) = 0;
     virtual void ClockTick() = 0;
     int GetChannel(uint64_t hex_addr) const;
 
@@ -65,7 +65,7 @@ class JedecDRAMSystem : public BaseDRAMSystem {
                     std::function<void(uint64_t)> write_callback);
     ~JedecDRAMSystem();
     bool WillAcceptTransaction(uint64_t hex_addr, bool is_write) const override;
-    bool AddTransaction(uint64_t hex_addr, bool is_write) override;
+    bool AddTransaction(uint64_t hex_addr, uint64_t start, bool is_write) override;
     void ClockTick() override;
 };
 
@@ -82,7 +82,7 @@ class IdealDRAMSystem : public BaseDRAMSystem {
                                bool is_write) const override {
         return true;
     };
-    bool AddTransaction(uint64_t hex_addr, bool is_write) override;
+    bool AddTransaction(uint64_t hex_addr, uint64_t start, bool is_write) override;
     void ClockTick() override;
 
    private:
