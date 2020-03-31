@@ -127,7 +127,10 @@ class Config {
     RefreshPolicy refresh_policy;
     int cmd_queue_size;
     bool unified_queue;
+    bool dist_controller;
+    int requesters_per_channel;
     int trans_queue_size;
+    int dist_trans_queue_size;
     int write_buf_size;
     bool enable_self_refresh;
     int sref_threshold;

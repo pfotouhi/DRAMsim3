@@ -224,7 +224,10 @@ void Config::InitSystemParams() {
     row_buf_policy = reader.Get("system", "row_buf_policy", "OPEN_PAGE");
     cmd_queue_size = GetInteger("system", "cmd_queue_size", 16);
     trans_queue_size = GetInteger("system", "trans_queue_size", 32);
+    dist_trans_queue_size = GetInteger("system", "dist_trans_queue_size", 2);
     unified_queue = reader.GetBoolean("system", "unified_queue", false);
+    dist_controller = reader.GetBoolean("system", "dist_controller", false);
+    requesters_per_channel = reader.GetInteger("system", "requesters_per_channel", 16);
     write_buf_size = GetInteger("system", "write_buf_size", 16);
     std::string ref_policy =
         reader.Get("system", "refresh_policy", "RANK_LEVEL_STAGGERED");
