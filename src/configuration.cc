@@ -228,6 +228,7 @@ void Config::InitSystemParams() {
     unified_queue = reader.GetBoolean("system", "unified_queue", false);
     dist_controller = reader.GetBoolean("system", "dist_controller", false);
     requesters_per_channel = reader.GetInteger("system", "requesters_per_channel", 16);
+    link_latency = reader.GetInteger("system", "link_latency", 1);
     write_buf_size = GetInteger("system", "write_buf_size", 16);
     std::string ref_policy =
         reader.Get("system", "refresh_policy", "RANK_LEVEL_STAGGERED");

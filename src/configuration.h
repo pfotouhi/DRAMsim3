@@ -129,6 +129,7 @@ class Config {
     bool unified_queue;
     bool dist_controller;
     int requesters_per_channel;
+    int link_latency;
     int trans_queue_size;
     int dist_trans_queue_size;
     int write_buf_size;
