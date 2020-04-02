@@ -16,6 +16,7 @@ class CPU {
               config_file, output_dir,
               std::bind(&CPU::ReadCallBack, this, std::placeholders::_1),
               std::bind(&CPU::WriteCallBack, this, std::placeholders::_1)),
+	  config_(new Config(config_file, output_dir)),
           clk_(0) {}
     virtual void ClockTick() = 0;
     void ReadCallBack(uint64_t addr) { return; }
@@ -23,6 +24,7 @@ class CPU {
     void PrintStats() { memory_system_.PrintStats(); }
 
    protected:
+    Config *config_;
     MemorySystem memory_system_;
     uint64_t clk_;
 };

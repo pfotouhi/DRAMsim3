@@ -110,23 +110,27 @@ struct Transaction {
         : addr(addr),
           added_cycle(0),
           requester(0),
+          dist_link_start(0),
           complete_cycle(0),
           is_write(is_write) {}
     Transaction(uint64_t addr, uint64_t requester, bool is_write)
         : addr(addr),
           added_cycle(0),
           requester(requester),
+          dist_link_start(0),
           complete_cycle(0),
           is_write(is_write) {}
     Transaction(const Transaction& tran)
         : addr(tran.addr),
           added_cycle(tran.added_cycle),
           requester(tran.requester),
+          dist_link_start(tran.dist_link_start),
           complete_cycle(tran.complete_cycle),
           is_write(tran.is_write) {}
     uint64_t addr;
     uint64_t added_cycle;
     uint64_t requester;
+    uint64_t dist_link_start;
     uint64_t complete_cycle;
     bool is_write;
 

@@ -29,6 +29,7 @@ class Controller {
 #endif  // THERMAL
     void ClockTick();
     bool WillAcceptTransaction(uint64_t hex_addr, bool is_write) const;
+    bool WillAcceptTransaction(uint64_t hex_addr, uint64_t requester, bool is_write) const;
     bool AddTransaction(Transaction trans);
     int QueueUsage() const;
     // Stats output
@@ -53,9 +54,18 @@ class Controller {
 
     // queue that takes transactions from CPU side
     bool is_unified_queue_;
+    bool is_dist_controller_;
     std::vector<Transaction> unified_queue_;
     std::vector<Transaction> read_queue_;
     std::vector<Transaction> write_buffer_;
+    // queues for distributed MC design
+    std::vector<std::vector<Transaction>> dist_unified_queue_;
+    std::vector<std::vector<Transaction>> dist_read_queue_;
+    std::vector<std::vector<Transaction>> dist_write_buffer_;
+    // last requester for distributed MC design
+    uint64_t last_unified_requester_;
+    uint64_t last_read_requester_;
+    uint64_t last_write_requester_;
 
     // transactions that are not completed, use map for convenience
     std::multimap<uint64_t, Transaction> pending_rd_q_;
@@ -76,6 +86,7 @@ class Controller {
 
     // transaction queueing
     int write_draining_;
+    void QueueIn();
     void ScheduleTransaction();
     void IssueCommand(const Command &tmp_cmd);
     Command TransToCommand(const Transaction &trans);

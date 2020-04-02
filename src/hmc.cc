@@ -340,6 +340,13 @@ bool HMCMemorySystem::WillAcceptTransaction(uint64_t hex_addr,
     return insertable;
 }
 
+bool HMCMemorySystem::WillAcceptTransaction(uint64_t hex_addr,
+					    uint64_t requester,
+                                            bool is_write) const {
+    // Not implemented!
+    return false;
+}
+
 bool HMCMemorySystem::AddTransaction(uint64_t hex_addr, bool is_write) {
     // to be compatible with other protocol we have this interface
     // when using this intreface the size of each transaction will be block_size
@@ -392,6 +399,13 @@ bool HMCMemorySystem::AddTransaction(uint64_t hex_addr, bool is_write) {
     int vault = GetChannel(hex_addr);
     HMCRequest *req = new HMCRequest(req_type, hex_addr, vault);
     return InsertHMCReq(req);
+}
+
+bool HMCMemorySystem::AddTransaction(uint64_t hex_addr,
+				     uint64_t requester,
+	       			     bool is_write) {
+    // Not implemented!
+    return false;
 }
 
 bool HMCMemorySystem::InsertReqToLink(HMCRequest *req, int link) {
