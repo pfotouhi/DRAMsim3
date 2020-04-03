@@ -51,6 +51,7 @@ std::pair<uint64_t, int> Controller::ReturnDoneTrans(uint64_t clk) {
             } else {
                 simple_stats_.Increment("num_reads_done");
                 simple_stats_.AddValue("read_latency", clk_ - it->added_cycle);
+                simple_stats_.AddValue("total_read_latency", clk_ - it->start_cycle);
             }
             auto pair = std::make_pair(it->addr, it->is_write);
             it = return_queue_.erase(it);
@@ -301,6 +302,8 @@ void Controller::IssueCommand(const Command &cmd) {
 	assert(it->second.schedule_cycle != 0);
         auto wr_lat = clk_ - it->second.added_cycle + config_.write_delay;
         simple_stats_.AddValue("write_latency", wr_lat);
+        auto wr_total_lat = clk_ - it->second.start_cycle + config_.write_delay;
+        simple_stats_.AddValue("total_write_latency", wr_total_lat);
         pending_wr_q_.erase(it);
     }
     // must update stats before states (for row hits)

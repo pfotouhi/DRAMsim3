@@ -63,7 +63,9 @@ SimpleStats::SimpleStats(const Config& config, int channel_id)
 
     // Histogram stats
     InitHistoStat("read_latency", "Read request latency (cycles)", 0, 200, 10);
+    InitHistoStat("total_read_latency", "TotalRead request latency (cycles)", 0, 200, 10);
     InitHistoStat("write_latency", "Write cmd latency (cycles)", 0, 200, 10);
+    InitHistoStat("total_write_latency", "Total Write cmd latency (cycles)", 0, 200, 10);
     InitHistoStat("interarrival_latency",
                   "Request interarrival latency (cycles)", 0, 100, 10);
     InitHistoStat("stall_latency",
@@ -91,6 +93,10 @@ SimpleStats::SimpleStats(const Config& config, int channel_id)
     InitStat("average_power", "calculated", "Average power (mW)");
     InitStat("average_read_latency", "calculated",
              "Average read request latency (cycles)");
+    InitStat("average_total_read_latency", "calculated",
+             "Average total read request latency (cycles)");
+    InitStat("average_total_write_latency", "calculated",
+             "Average total write request latency (cycles)");
     InitStat("average_interarrival", "calculated",
              "Average request interarrival latency (cycles)");
     InitStat("average_stall", "calculated",
@@ -437,6 +443,10 @@ void SimpleStats::UpdateEpochStats() {
     calculated_["average_power"] = total_energy / epoch_counters_["num_cycles"];
     calculated_["average_read_latency"] =
         GetHistoAvg(epoch_histo_counts_.at("read_latency"));
+    calculated_["average_total_read_latency"] =
+        GetHistoAvg(epoch_histo_counts_.at("total_read_latency"));
+    calculated_["average_total_write_latency"] =
+        GetHistoAvg(epoch_histo_counts_.at("total_write_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(epoch_histo_counts_.at("interarrival_latency"));
     calculated_["average_read_interarrival"] =
@@ -519,6 +529,10 @@ void SimpleStats::UpdateFinalStats() {
     // calculated_["average_read_latency"] = GetHistoAvg("read_latency");
     calculated_["average_read_latency"] =
         GetHistoAvg(histo_counts_.at("read_latency"));
+    calculated_["average_total_read_latency"] =
+        GetHistoAvg(histo_counts_.at("total_read_latency"));
+    calculated_["average_total_write_latency"] =
+        GetHistoAvg(histo_counts_.at("total_write_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(histo_counts_.at("interarrival_latency"));
     calculated_["average_read_interarrival"] =
