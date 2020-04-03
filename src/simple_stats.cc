@@ -63,9 +63,29 @@ SimpleStats::SimpleStats(const Config& config, int channel_id)
 
     // Histogram stats
     InitHistoStat("read_latency", "Read request latency (cycles)", 0, 200, 10);
+    InitHistoStat("total_read_latency", "TotalRead request latency (cycles)", 0, 200, 10);
     InitHistoStat("write_latency", "Write cmd latency (cycles)", 0, 200, 10);
+    InitHistoStat("total_write_latency", "Total Write cmd latency (cycles)", 0, 200, 10);
     InitHistoStat("interarrival_latency",
                   "Request interarrival latency (cycles)", 0, 100, 10);
+    InitHistoStat("stall_latency",
+                  "Request stall latency (cycles)", 0, 200, 20);
+    InitHistoStat("read_stall_latency",
+                  "Read request stall latency (cycles)", 0, 200, 20);
+    InitHistoStat("write_stall_latency",
+                  "Write request stall latency (cycles)", 0, 200, 20);
+    InitHistoStat("queuing_latency",
+                  "Request queuing latency (cycles)", 0, 200, 10);
+    InitHistoStat("read_queuing_latency",
+                  "Read request queuing  latency (cycles)", 0, 200, 10);
+    InitHistoStat("write_queuing_latency",
+                  "Write request queuing latency (cycles)", 0, 200, 10);
+    InitHistoStat("command_queuing_latency",
+                  "Request command queuing latency (cycles)", 0, 200, 10);
+    InitHistoStat("read_command_queuing_latency",
+                  "Read request command queuing latency (cycles)", 0, 200, 10);
+    InitHistoStat("write_command_queuing_latency",
+                  "Write request command queuing latency (cycles)", 0, 200, 10);
 
     // some irregular stats
     InitStat("average_bandwidth", "calculated", "Average bandwidth");
@@ -73,8 +93,30 @@ SimpleStats::SimpleStats(const Config& config, int channel_id)
     InitStat("average_power", "calculated", "Average power (mW)");
     InitStat("average_read_latency", "calculated",
              "Average read request latency (cycles)");
+    InitStat("average_total_read_latency", "calculated",
+             "Average total read request latency (cycles)");
+    InitStat("average_total_write_latency", "calculated",
+             "Average total write request latency (cycles)");
     InitStat("average_interarrival", "calculated",
              "Average request interarrival latency (cycles)");
+    InitStat("average_stall", "calculated",
+             "Average stall latency (cycles)");
+    InitStat("average_read_stall", "calculated",
+             "Average read stall latency (cycles)");
+    InitStat("average_write_stall", "calculated",
+             "Average write stall latency (cycles)");
+    InitStat("average_queuing", "calculated",
+             "Average queuing latency (cycles)");
+    InitStat("average_read_queuing", "calculated",
+             "Average read queuing latency (cycles)");
+    InitStat("average_write_queuing", "calculated",
+             "Average write queuing latency (cycles)");
+    InitStat("average_command_queuing", "calculated",
+             "Average command queuing latency (cycles)");
+    InitStat("average_read_command_queuing", "calculated",
+             "Average read command queuing latency (cycles)");
+    InitStat("average_write_command_queuing", "calculated",
+             "Average write command queuing latency (cycles)");
 }
 
 void SimpleStats::AddValue(const std::string name, const int value) {
@@ -401,8 +443,32 @@ void SimpleStats::UpdateEpochStats() {
     calculated_["average_power"] = total_energy / epoch_counters_["num_cycles"];
     calculated_["average_read_latency"] =
         GetHistoAvg(epoch_histo_counts_.at("read_latency"));
+    calculated_["average_total_read_latency"] =
+        GetHistoAvg(epoch_histo_counts_.at("total_read_latency"));
+    calculated_["average_total_write_latency"] =
+        GetHistoAvg(epoch_histo_counts_.at("total_write_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(epoch_histo_counts_.at("interarrival_latency"));
+    calculated_["average_read_interarrival"] =
+        GetHistoAvg(epoch_histo_counts_.at("interarrival_read_latency"));
+    calculated_["average_stall"] =
+        GetHistoAvg(epoch_histo_counts_.at("stall_latency"));
+    calculated_["average_read_stall"] =
+        GetHistoAvg(epoch_histo_counts_.at("read_stall_latency"));
+    calculated_["average_write_stall"] =
+        GetHistoAvg(epoch_histo_counts_.at("write_stall_latency"));
+    calculated_["average_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("queuing_latency"));
+    calculated_["average_read_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("read_queuing_latency"));
+    calculated_["average_write_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("write_queuing_latency"));
+    calculated_["average_command_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("command_queuing_latency"));
+    calculated_["average_read_command_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("read_command_queuing_latency"));
+    calculated_["average_write_command_queuing"] =
+        GetHistoAvg(epoch_histo_counts_.at("write_command_queuing_latency"));
 
     UpdatePrints(true);
     for (auto& it : epoch_counters_) {
@@ -463,8 +529,32 @@ void SimpleStats::UpdateFinalStats() {
     // calculated_["average_read_latency"] = GetHistoAvg("read_latency");
     calculated_["average_read_latency"] =
         GetHistoAvg(histo_counts_.at("read_latency"));
+    calculated_["average_total_read_latency"] =
+        GetHistoAvg(histo_counts_.at("total_read_latency"));
+    calculated_["average_total_write_latency"] =
+        GetHistoAvg(histo_counts_.at("total_write_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(histo_counts_.at("interarrival_latency"));
+    calculated_["average_read_interarrival"] =
+        GetHistoAvg(histo_counts_.at("interarrival_read_latency"));
+    calculated_["average_stall"] =
+        GetHistoAvg(histo_counts_.at("stall_latency"));
+    calculated_["average_read_stall"] =
+        GetHistoAvg(histo_counts_.at("read_stall_latency"));
+    calculated_["average_write_stall"] =
+        GetHistoAvg(histo_counts_.at("write_stall_latency"));
+    calculated_["average_queuing"] =
+        GetHistoAvg(histo_counts_.at("queuing_latency"));
+    calculated_["average_read_queuing"] =
+        GetHistoAvg(histo_counts_.at("read_queuing_latency"));
+    calculated_["average_write_queuing"] =
+        GetHistoAvg(histo_counts_.at("write_queuing_latency"));
+    calculated_["average_command_queuing"] =
+        GetHistoAvg(histo_counts_.at("command_queuing_latency"));
+    calculated_["average_read_command_queuing"] =
+        GetHistoAvg(histo_counts_.at("read_command_queuing_latency"));
+    calculated_["average_write_command_queuing"] =
+        GetHistoAvg(histo_counts_.at("write_command_queuing_latency"));
 
     UpdatePrints(false);
     return;

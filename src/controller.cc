@@ -51,6 +51,7 @@ std::pair<uint64_t, int> Controller::ReturnDoneTrans(uint64_t clk) {
             } else {
                 simple_stats_.Increment("num_reads_done");
                 simple_stats_.AddValue("read_latency", clk_ - it->added_cycle);
+                simple_stats_.AddValue("total_read_latency", clk_ - it->start_cycle);
             }
             auto pair = std::make_pair(it->addr, it->is_write);
             it = return_queue_.erase(it);
@@ -161,9 +162,11 @@ bool Controller::WillAcceptTransaction(uint64_t hex_addr, bool is_write) const {
 bool Controller::AddTransaction(Transaction trans) {
     trans.added_cycle = clk_;
     simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
+    simple_stats_.AddValue("stall_latency", clk_ - trans.start_cycle);
     last_trans_clk_ = clk_;
 
     if (trans.is_write) {
+        simple_stats_.AddValue("write_stall_latency", clk_ - trans.start_cycle);
         if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
             pending_wr_q_.insert(std::make_pair(trans.addr, trans));
             if (is_unified_queue_) {
@@ -176,6 +179,7 @@ bool Controller::AddTransaction(Transaction trans) {
         return_queue_.push_back(trans);
         return true;
     } else {  // read
+        simple_stats_.AddValue("read_stall_latency", clk_ - trans.start_cycle);
         // if in write buffer, use the write buffer value
         if (pending_wr_q_.count(trans.addr) > 0) {
             trans.complete_cycle = clk_ + 1;
@@ -211,6 +215,32 @@ void Controller::ScheduleTransaction() {
         auto cmd = TransToCommand(*it);
         if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
                                          cmd.Bank())) {
+
+            // update stats for all pending requests
+            if (cmd.IsWrite()) {
+                auto num_requests = pending_wr_q_.count(cmd.hex_addr);
+                while (num_requests > 0) {
+                    auto req = pending_wr_q_.find(cmd.hex_addr);
+                    req->second.schedule_cycle = clk_;
+        	    simple_stats_.AddValue("command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+        	    simple_stats_.AddValue("write_command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+                    num_requests -= 1;
+		}
+            } else {
+                auto num_requests = pending_rd_q_.count(cmd.hex_addr);
+                while (num_requests > 0) {
+                    auto req = pending_rd_q_.find(cmd.hex_addr);
+                    req->second.schedule_cycle = clk_;
+        	    simple_stats_.AddValue("command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+        	    simple_stats_.AddValue("read_command_queuing_latency", 
+            		req->second.schedule_cycle - req->second.added_cycle);
+                    num_requests -= 1;
+                }
+            }
+
             if (!is_unified_queue_ && cmd.IsWrite()) {
                 // Enforce R->W dependency
                 if (pending_rd_q_.count(it->addr) > 0) {
@@ -244,6 +274,13 @@ void Controller::IssueCommand(const Command &cmd) {
         // if there are multiple reads pending return them all
         while (num_reads > 0) {
             auto it = pending_rd_q_.find(cmd.hex_addr);
+            it->second.issue_cycle = clk_;
+    	    simple_stats_.AddValue("queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+    	    simple_stats_.AddValue("read_queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+	    // sanity check to make sure we are recording schedule_cycle
+	    assert(it->second.schedule_cycle != 0);
             it->second.complete_cycle = clk_ + config_.read_delay;
             return_queue_.push_back(it->second);
             pending_rd_q_.erase(it);
@@ -256,8 +293,17 @@ void Controller::IssueCommand(const Command &cmd) {
             std::cerr << cmd.hex_addr << " not in write queue!" << std::endl;
             exit(1);
         }
+        it->second.issue_cycle = clk_;
+    	simple_stats_.AddValue("queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+    	simple_stats_.AddValue("write_queuing_latency", 
+		it->second.issue_cycle - it->second.schedule_cycle);
+	// sanity check to make sure we are recording schedule_cycle
+	assert(it->second.schedule_cycle != 0);
         auto wr_lat = clk_ - it->second.added_cycle + config_.write_delay;
         simple_stats_.AddValue("write_latency", wr_lat);
+        auto wr_total_lat = clk_ - it->second.start_cycle + config_.write_delay;
+        simple_stats_.AddValue("total_write_latency", wr_total_lat);
         pending_wr_q_.erase(it);
     }
     // must update stats before states (for row hits)
