@@ -449,8 +449,6 @@ void SimpleStats::UpdateEpochStats() {
         GetHistoAvg(epoch_histo_counts_.at("total_write_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(epoch_histo_counts_.at("interarrival_latency"));
-    calculated_["average_read_interarrival"] =
-        GetHistoAvg(epoch_histo_counts_.at("interarrival_read_latency"));
     calculated_["average_stall"] =
         GetHistoAvg(epoch_histo_counts_.at("stall_latency"));
     calculated_["average_read_stall"] =
@@ -535,8 +533,6 @@ void SimpleStats::UpdateFinalStats() {
         GetHistoAvg(histo_counts_.at("total_write_latency"));
     calculated_["average_interarrival"] =
         GetHistoAvg(histo_counts_.at("interarrival_latency"));
-    calculated_["average_read_interarrival"] =
-        GetHistoAvg(histo_counts_.at("interarrival_read_latency"));
     calculated_["average_stall"] =
         GetHistoAvg(histo_counts_.at("stall_latency"));
     calculated_["average_read_stall"] =
