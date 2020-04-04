@@ -81,6 +81,7 @@ std::pair<uint64_t, int> Controller::ReturnDoneTrans(uint64_t clk) {
                 } else {
                     simple_stats_.Increment("num_reads_done");
                     simple_stats_.AddValue("read_latency", clk_ - it->added_cycle);
+                    simple_stats_.AddValue("total_read_latency", clk_ - it->start_cycle);
                 }
                 auto pair = std::make_pair(it->addr, it->is_write);
                 it = return_queue_.erase(it);
@@ -222,11 +223,13 @@ bool Controller::AddTransaction(Transaction trans) {
     if (is_dist_controller_) {
         trans.added_cycle = clk_;
         simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
+        simple_stats_.AddValue("stall_latency", clk_ - trans.start_cycle);
         last_trans_clk_ = clk_;
 
 	// Here we only add elements to queues, the rest of functionality
 	// for distributed memory controllers is moved to QueueIn
         if (trans.is_write) {
+            simple_stats_.AddValue("write_stall_latency", clk_ - trans.start_cycle);
             if (is_unified_queue_) {
                 dist_unified_queue_[trans.requester].push_back(trans);
             } else {
@@ -234,6 +237,7 @@ bool Controller::AddTransaction(Transaction trans) {
             }
             return true;
         } else {  // read
+            simple_stats_.AddValue("read_stall_latency", clk_ - trans.start_cycle);
             if (is_unified_queue_) {
                 dist_unified_queue_[trans.requester].push_back(trans);
             } else {
