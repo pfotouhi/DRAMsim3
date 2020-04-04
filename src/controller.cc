@@ -329,7 +329,7 @@ void Controller::QueueIn() {
                 }
                 pending_rd_q_.insert(std::make_pair(trans.addr, trans));
                 if (pending_rd_q_.count(trans.addr) == 1)
-                   read_queue_.push_back(trans);
+                   unified_queue_.push_back(trans);
             }
 	    dist_unified_queue_[requester_].erase(dist_unified_queue_[requester_].begin());
 	    last_unified_requester_ = requester_;
