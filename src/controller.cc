@@ -290,6 +290,21 @@ void Controller::QueueIn() {
     Transaction trans;
     bool write_done_ = false;
     bool read_done_ = false;
+    // Make sure we will always have at most 1 request at shared queue
+    if (is_unified_queue_) {
+	if (unified_queue_.size() >= 1)
+	    return;
+    } else {
+	if (write_buffer_.size() >= 1) {
+	    write_done_ = true;
+	}
+	if (read_queue_.size() >= 1) {
+	    read_done_ = true;
+	}
+	if (write_done_ and read_done_)
+	    return;
+    }
+
     for (auto i = 0; i < config_.requesters_per_channel; i++) {
         if (is_unified_queue_) {
 	    // Start iterating through requesters from the  one after last requester
