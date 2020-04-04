@@ -22,16 +22,45 @@ Controller::Controller(int channel, const Config &config, const Timing &timing)
       thermal_calc_(thermal_calc),
 #endif  // THERMAL
       is_unified_queue_(config.unified_queue),
+      is_dist_controller_(config.dist_controller),
+      last_unified_requester_(0),
+      last_read_requester_(0),
+      last_write_requester_(0),
       row_buf_policy_(config.row_buf_policy == "CLOSE_PAGE"
                           ? RowBufPolicy::CLOSE_PAGE
                           : RowBufPolicy::OPEN_PAGE),
       last_trans_clk_(0),
       write_draining_(0) {
-    if (is_unified_queue_) {
-        unified_queue_.reserve(config_.trans_queue_size);
-    } else {
-        read_queue_.reserve(config_.trans_queue_size);
-        write_buffer_.reserve(config_.trans_queue_size);
+    if (is_dist_controller_) {
+        if (is_unified_queue_) {
+	    // Per requester queues
+	    dist_unified_queue_.reserve(config_.requesters_per_channel);
+            for (auto i = 0; i < config_.requesters_per_channel; i++) {
+                dist_unified_queue_[i].reserve(config_.dist_trans_queue_size);
+            }
+	    // Single entry queue where one request form different dist_queues
+	    // are added to
+            unified_queue_.reserve(1);
+        } else {
+	    // Per requester queues
+            dist_read_queue_.reserve(config_.requesters_per_channel);
+            dist_write_buffer_.reserve(config_.requesters_per_channel);
+            for (auto i = 0; i < config_.requesters_per_channel; i++) {
+                dist_read_queue_[i].reserve(config_.dist_trans_queue_size);
+                dist_write_buffer_[i].reserve(config_.dist_trans_queue_size);
+            }
+	    // Single entry queue where one request form different dist_queues
+	    // are added to
+            read_queue_.reserve(1);
+            write_buffer_.reserve(1);
+        }
+    } else  {
+        if (is_unified_queue_) {
+            unified_queue_.reserve(config_.trans_queue_size);
+        } else {
+            read_queue_.reserve(config_.trans_queue_size);
+            write_buffer_.reserve(config_.trans_queue_size);
+        }
     }
 
 #ifdef CMD_TRACE
@@ -45,20 +74,36 @@ Controller::Controller(int channel, const Config &config, const Timing &timing)
 std::pair<uint64_t, int> Controller::ReturnDoneTrans(uint64_t clk) {
     auto it = return_queue_.begin();
     while (it != return_queue_.end()) {
-        if (clk >= it->complete_cycle) {
-            if (it->is_write) {
-                simple_stats_.Increment("num_writes_done");
+	if (is_dist_controller_) {
+	    if (clk >= it->complete_cycle + config_.link_latency) {
+                if (it->is_write) {
+                    simple_stats_.Increment("num_writes_done");
+                } else {
+                    simple_stats_.Increment("num_reads_done");
+                    simple_stats_.AddValue("read_latency", clk_ - it->added_cycle);
+                }
+                auto pair = std::make_pair(it->addr, it->is_write);
+                it = return_queue_.erase(it);
+                return pair;
             } else {
-                simple_stats_.Increment("num_reads_done");
-                simple_stats_.AddValue("read_latency", clk_ - it->added_cycle);
-                simple_stats_.AddValue("total_read_latency", clk_ - it->start_cycle);
+                ++it;
+	    }
+	} else {
+            if (clk >= it->complete_cycle) {
+                if (it->is_write) {
+                    simple_stats_.Increment("num_writes_done");
+                } else {
+                    simple_stats_.Increment("num_reads_done");
+                    simple_stats_.AddValue("read_latency", clk_ - it->added_cycle);
+                    simple_stats_.AddValue("total_read_latency", clk_ - it->start_cycle);
+                }
+                auto pair = std::make_pair(it->addr, it->is_write);
+                it = return_queue_.erase(it);
+                return pair;
+            } else {
+                ++it;
             }
-            auto pair = std::make_pair(it->addr, it->is_write);
-            it = return_queue_.erase(it);
-            return pair;
-        } else {
-            ++it;
-        }
+	}
     }
     return std::make_pair(-1, -1);
 }
@@ -142,6 +187,8 @@ void Controller::ClockTick() {
         }
     }
 
+    if (is_dist_controller_)
+        QueueIn();
     ScheduleTransaction();
     clk_++;
     cmd_queue_.ClockTick();
@@ -159,44 +206,159 @@ bool Controller::WillAcceptTransaction(uint64_t hex_addr, bool is_write) const {
     }
 }
 
-bool Controller::AddTransaction(Transaction trans) {
-    trans.added_cycle = clk_;
-    simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
-    simple_stats_.AddValue("stall_latency", clk_ - trans.start_cycle);
-    last_trans_clk_ = clk_;
+bool Controller::WillAcceptTransaction(uint64_t hex_addr, uint64_t requester, bool is_write) const {
+    // We should only call this with distriuted memory controllers
+    assert(is_dist_controller_);
+    if (is_unified_queue_) {
+        return dist_unified_queue_[requester].size() < dist_unified_queue_[requester].capacity();
+    } else if (!is_write) {
+        return dist_read_queue_[requester].size() < dist_read_queue_[requester].capacity();
+    } else {
+        return dist_write_buffer_[requester].size() < dist_write_buffer_[requester].capacity();
+    }
+}
 
-    if (trans.is_write) {
-        simple_stats_.AddValue("write_stall_latency", clk_ - trans.start_cycle);
-        if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
-            pending_wr_q_.insert(std::make_pair(trans.addr, trans));
+bool Controller::AddTransaction(Transaction trans) {
+    if (is_dist_controller_) {
+        trans.added_cycle = clk_;
+        simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
+        last_trans_clk_ = clk_;
+
+	// Here we only add elements to queues, the rest of functionality
+	// for distributed memory controllers is moved to QueueIn
+        if (trans.is_write) {
             if (is_unified_queue_) {
-                unified_queue_.push_back(trans);
+                dist_unified_queue_[trans.requester].push_back(trans);
             } else {
-                write_buffer_.push_back(trans);
+                dist_write_buffer_[trans.requester].push_back(trans);
             }
+            return true;
+        } else {  // read
+            if (is_unified_queue_) {
+                dist_unified_queue_[trans.requester].push_back(trans);
+            } else {
+                dist_read_queue_[trans.requester].push_back(trans);
+            }
+            return true;
         }
-        trans.complete_cycle = clk_ + 1;
-        return_queue_.push_back(trans);
-        return true;
-    } else {  // read
-        simple_stats_.AddValue("read_stall_latency", clk_ - trans.start_cycle);
-        // if in write buffer, use the write buffer value
-        if (pending_wr_q_.count(trans.addr) > 0) {
+    } else {
+        trans.added_cycle = clk_;
+        simple_stats_.AddValue("interarrival_latency", clk_ - last_trans_clk_);
+        simple_stats_.AddValue("stall_latency", clk_ - trans.start_cycle);
+        last_trans_clk_ = clk_;
+
+        if (trans.is_write) {
+            simple_stats_.AddValue("write_stall_latency", clk_ - trans.start_cycle);
+            if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
+                pending_wr_q_.insert(std::make_pair(trans.addr, trans));
+                if (is_unified_queue_) {
+                    unified_queue_.push_back(trans);
+                } else {
+                    write_buffer_.push_back(trans);
+                }
+            }
             trans.complete_cycle = clk_ + 1;
             return_queue_.push_back(trans);
             return true;
-        }
-        pending_rd_q_.insert(std::make_pair(trans.addr, trans));
-        if (pending_rd_q_.count(trans.addr) == 1) {
-            if (is_unified_queue_) {
-                unified_queue_.push_back(trans);
-            } else {
-                read_queue_.push_back(trans);
+        } else {  // read
+            simple_stats_.AddValue("read_stall_latency", clk_ - trans.start_cycle);
+            // if in write buffer, use the write buffer value
+            if (pending_wr_q_.count(trans.addr) > 0) {
+                trans.complete_cycle = clk_ + 1;
+                return_queue_.push_back(trans);
+                return true;
             }
+            pending_rd_q_.insert(std::make_pair(trans.addr, trans));
+            if (pending_rd_q_.count(trans.addr) == 1) {
+                if (is_unified_queue_) {
+                    unified_queue_.push_back(trans);
+                } else {
+                    read_queue_.push_back(trans);
+                }
+            }
+            return true;
         }
-        return true;
     }
 }
+
+void Controller::QueueIn() {
+    assert(is_dist_controller_);
+    Transaction trans;
+    bool write_done_ = false;
+    bool read_done_ = false;
+    for (auto i = 0; i < config_.requesters_per_channel; i++) {
+        if (is_unified_queue_) {
+	    // Start iterating through requesters from the  one after last requester
+	    uint64_t requester_ = (last_unified_requester_ + 1 + i) 
+		    % config_.requesters_per_channel;
+	    if (dist_unified_queue_[requester_].empty()) // skip this requester
+		continue;
+	    trans = dist_unified_queue_[requester_].front();
+	    trans.dist_link_start = clk_;
+            if (trans.is_write) {
+                if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
+                    pending_wr_q_.insert(std::make_pair(trans.addr, trans));
+                    unified_queue_.push_back(trans);
+                }
+                trans.complete_cycle = clk_ + 1;
+                return_queue_.push_back(trans);
+            } else {  // read
+                // if in write buffer, use the write buffer value
+                if (pending_wr_q_.count(trans.addr) > 0) {
+                    trans.complete_cycle = clk_ + 1;
+                    return_queue_.push_back(trans);
+                }
+                pending_rd_q_.insert(std::make_pair(trans.addr, trans));
+                if (pending_rd_q_.count(trans.addr) == 1)
+                   read_queue_.push_back(trans);
+            }
+	    dist_unified_queue_[requester_].erase(dist_unified_queue_[requester_].begin());
+	    last_unified_requester_ = requester_;
+	    break;
+        } else {
+	    // Starting with writes
+	    // Start iterating through requesters from the  one after last requester
+	    uint64_t write_requester_ = (last_write_requester_ + 1 + i) 
+		    % config_.requesters_per_channel;
+	    if (!write_done_ && !dist_write_buffer_[write_requester_].empty()) {
+	        trans = dist_write_buffer_[write_requester_].front();
+		trans.dist_link_start = clk_;
+                if (pending_wr_q_.count(trans.addr) == 0) {  // can not merge writes
+                    pending_wr_q_.insert(std::make_pair(trans.addr, trans));
+                    write_buffer_.push_back(trans);
+                }
+                trans.complete_cycle = clk_ + 1;
+                return_queue_.push_back(trans);
+	        dist_write_buffer_[write_requester_].erase(dist_write_buffer_[write_requester_].begin());
+	        last_write_requester_ = write_requester_;
+		write_done_ = true;
+	    }
+	    // Now reads 
+	    // Start iterating through requesters from the  one after last requester
+	    uint64_t read_requester_ = (last_read_requester_ + 1 + i) 
+		    % config_.requesters_per_channel;
+	    if (!read_done_ && !dist_read_queue_[read_requester_].empty()) {
+	        trans = dist_read_queue_[read_requester_].front();
+		trans.dist_link_start = clk_;
+                // if in write buffer, use the write buffer value
+                if (pending_wr_q_.count(trans.addr) > 0) {
+                    trans.complete_cycle = clk_ + 1;
+                    return_queue_.push_back(trans);
+                }
+                pending_rd_q_.insert(std::make_pair(trans.addr, trans));
+                if (pending_rd_q_.count(trans.addr) == 1)
+                    read_queue_.push_back(trans);
+	        dist_read_queue_[read_requester_].erase(dist_read_queue_[read_requester_].begin());
+	        last_read_requester_ = read_requester_;
+		read_done_ = true;
+	    }
+	    // Done if we have issued one read and one write
+	    if (write_done_ and read_done_)
+	        break;
+	}
+    } 
+}
+
 
 void Controller::ScheduleTransaction() {
     // determine whether to schedule read or write
@@ -212,6 +374,12 @@ void Controller::ScheduleTransaction() {
         is_unified_queue_ ? unified_queue_
                           : write_draining_ > 0 ? write_buffer_ : read_queue_;
     for (auto it = queue.begin(); it != queue.end(); it++) {
+	// For distributed memory controller design we should consider
+	// the inerconnect latency.
+	if (is_dist_controller_) {
+	    if (it->dist_link_start + config_.link_latency < clk_)
+		continue;
+	}
         auto cmd = TransToCommand(*it);
         if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
                                          cmd.Bank())) {

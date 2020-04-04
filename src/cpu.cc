@@ -77,13 +77,26 @@ void TraceBasedCPU::ClockTick() {
             get_next_ = false;
             trace_file_ >> trans_;
         }
-        if (trans_.added_cycle <= clk_) {
-            get_next_ = memory_system_.WillAcceptTransaction(trans_.addr,
-                                                             trans_.is_write);
-            if (get_next_) {
-                memory_system_.AddTransaction(trans_.addr, trans_.start_cycle, trans_.is_write);
+        if (config_->dist_controller) {
+            if (trans_.added_cycle <= clk_) {
+                get_next_ = memory_system_.WillAcceptTransaction(trans_.addr,
+								 trans_.requester,
+                                                                 trans_.is_write);
+                if (get_next_) {
+                    memory_system_.AddTransaction(trans_.addr, trans_.start_cycle, 
+						  trans_.requester, trans_.is_write);
+                }
             }
-        }
+	} else {
+            if (trans_.added_cycle <= clk_) {
+                get_next_ = memory_system_.WillAcceptTransaction(trans_.addr,
+                                                                 trans_.is_write);
+                if (get_next_) {
+                    memory_system_.AddTransaction(trans_.addr, trans_.start_cycle, 
+				                  trans_.is_write);
+                }
+            }
+	}
     }
     clk_++;
     return;
