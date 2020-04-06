@@ -52,7 +52,7 @@ Controller::Controller(int channel, const Config &config, const Timing &timing)
 	    // Single entry queue where one request form different dist_queues
 	    // are added to
             read_queue_.reserve(1);
-            write_buffer_.reserve(1);
+            write_buffer_.reserve(32);
         }
     } else  {
         if (is_unified_queue_) {
@@ -295,7 +295,7 @@ void Controller::QueueIn() {
 	if (unified_queue_.size() >= 1)
 	    return;
     } else {
-	if (write_buffer_.size() >= 1) {
+	if (write_buffer_.size() >= 32) {
 	    write_done_ = true;
 	}
 	if (read_queue_.size() >= 1) {
