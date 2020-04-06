@@ -396,7 +396,7 @@ void Controller::ScheduleTransaction() {
 	// For distributed memory controller design we should consider
 	// the inerconnect latency.
 	if (is_dist_controller_) {
-	    if (it->dist_link_start + config_.link_latency < clk_)
+	    if (it->dist_link_start + config_.link_latency > clk_)
 		continue;
 	}
         auto cmd = TransToCommand(*it);
