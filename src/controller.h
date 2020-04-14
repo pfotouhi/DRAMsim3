@@ -62,6 +62,7 @@ class Controller {
     std::vector<std::vector<Transaction>> dist_unified_queue_;
     std::vector<std::vector<Transaction>> dist_read_queue_;
     std::vector<std::vector<Transaction>> dist_write_buffer_;
+    std::vector<std::vector<Transaction>> per_bank_read_queue_;
     // last requester for distributed MC design
     uint64_t last_unified_requester_;
     uint64_t last_read_requester_;

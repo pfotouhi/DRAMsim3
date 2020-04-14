@@ -49,9 +49,13 @@ Controller::Controller(int channel, const Config &config, const Timing &timing)
                 dist_read_queue_[i].reserve(config_.dist_trans_queue_size);
                 dist_write_buffer_[i].reserve(config_.dist_trans_queue_size);
             }
-	    // Single entry queue where one request form different dist_queues
-	    // are added to
-            read_queue_.reserve(1);
+	    // Single entry read queue per bank where one request form 
+	    // different dist_queues are added to
+	    auto banks_per_channel = config_.bankgroups * config_.banks_per_group;
+            per_bank_read_queue_.reserve(banks_per_channel);
+            for (auto i = 0; i < banks_per_channel; i++) {
+            	per_bank_read_queue_[i].reserve(1);
+            }
             write_buffer_.reserve(32);
         }
     } else  {
@@ -270,6 +274,7 @@ bool Controller::AddTransaction(Transaction trans) {
             if (pending_wr_q_.count(trans.addr) > 0) {
                 trans.complete_cycle = clk_ + 1;
                 return_queue_.push_back(trans);
+		// ADD read_queue_lat and read_command queue lat
                 return true;
             }
             pending_rd_q_.insert(std::make_pair(trans.addr, trans));
@@ -298,9 +303,16 @@ void Controller::QueueIn() {
 	if (write_buffer_.size() >= 32) {
 	    write_done_ = true;
 	}
-	if (read_queue_.size() >= 1) {
-	    read_done_ = true;
-	}
+	// Assume all per bank queues are full
+	read_done_ = true;
+	auto banks_per_channel = config_.bankgroups * config_.banks_per_group;
+        for (auto i = 0; i < banks_per_channel; i++) {
+	    // Check if there is at least one that is not full
+	    if (per_bank_read_queue_[i].size() < 1) {
+	        read_done_ = false;
+		break;
+	    }
+        }
 	if (write_done_ and read_done_)
 	    return;
     }
@@ -336,7 +348,7 @@ void Controller::QueueIn() {
 	    break;
         } else {
 	    // Starting with writes
-	    // Start iterating through requesters from the  one after last requester
+	    // Start iterating through requesters from the one after last requester
 	    uint64_t write_requester_ = (last_write_requester_ + 1 + i) 
 		    % config_.requesters_per_channel;
 	    if (!write_done_ && !dist_write_buffer_[write_requester_].empty()) {
@@ -353,20 +365,27 @@ void Controller::QueueIn() {
 		write_done_ = true;
 	    }
 	    // Now reads 
-	    // Start iterating through requesters from the  one after last requester
+	    // Start iterating through requesters from the one after last requester
 	    uint64_t read_requester_ = (last_read_requester_ + 1 + i) 
 		    % config_.requesters_per_channel;
 	    if (!read_done_ && !dist_read_queue_[read_requester_].empty()) {
 	        trans = dist_read_queue_[read_requester_].front();
-		trans.dist_link_start = clk_;
                 // if in write buffer, use the write buffer value
                 if (pending_wr_q_.count(trans.addr) > 0) {
                     trans.complete_cycle = clk_ + 1;
+		    // ADD read_queue_lat and read_command queue lat
                     return_queue_.push_back(trans);
-                }
-                pending_rd_q_.insert(std::make_pair(trans.addr, trans));
-                if (pending_rd_q_.count(trans.addr) == 1)
-                    read_queue_.push_back(trans);
+                } else {
+    		    auto read_addr = config_.AddressMapping(trans.addr);
+		    auto queue_id = (read_addr.bankgroup * config_.banks_per_group) + read_addr.bank;
+		    // Check if per bank queue for this request is full
+	            if (per_bank_read_queue_[queue_id].size() >= 1)
+		        continue;
+		    trans.dist_link_start = clk_;
+                    pending_rd_q_.insert(std::make_pair(trans.addr, trans));
+                    if (pending_rd_q_.count(trans.addr) == 1)
+                        per_bank_read_queue_[queue_id].push_back(trans);
+		}
 	        dist_read_queue_[read_requester_].erase(dist_read_queue_[read_requester_].begin());
 	        last_read_requester_ = read_requester_;
 		read_done_ = true;
@@ -389,57 +408,129 @@ void Controller::ScheduleTransaction() {
         }
     }
 
-    std::vector<Transaction> &queue =
-        is_unified_queue_ ? unified_queue_
-                          : write_draining_ > 0 ? write_buffer_ : read_queue_;
-    for (auto it = queue.begin(); it != queue.end(); it++) {
-	// For distributed memory controller design we should consider
-	// the inerconnect latency.
-	if (is_dist_controller_) {
-	    if (it->dist_link_start + config_.link_latency > clk_)
-		continue;
+    if (is_dist_controller_) {
+        if (write_draining_ > 0) {
+	    std::vector<Transaction> &queue = write_buffer_;
+	    for (auto it = queue.begin(); it != queue.end(); it++) {
+	        // for distributed memory controller design we should consider
+	        // the inerconnect latency.
+	        if (it->dist_link_start + config_.link_latency > clk_)
+	        	continue;
+	        auto cmd = TransToCommand(*it);
+	        if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
+	                                         cmd.Bank())) {
+	    
+	            // update stats for all pending requests
+	            assert(cmd.iswrite());
+	            auto num_requests = pending_wr_q_.count(cmd.hex_addr);
+		    assert(num_requests == 1); // if this does not fail remove the whole things
+	            while (num_requests > 0) {
+	                auto req = pending_wr_q_.find(cmd.hex_addr);
+	                req->second.schedule_cycle = clk_;
+	                simple_stats_.AddValue("command_queuing_latency", 
+	            	req->second.schedule_cycle - req->second.added_cycle);
+	                simple_stats_.AddValue("write_command_queuing_latency", 
+	            	req->second.schedule_cycle - req->second.added_cycle);
+	                num_requests -= 1;
+	            }
+	    
+	            // enforce r->w dependency
+	            if (pending_rd_q_.count(it->addr) > 0) {
+	                write_draining_ = 0;
+	                break;
+	            }
+	            write_draining_ -= 1;
+	            cmd_queue_.AddCommand(cmd);
+	            queue.erase(it);
+	            break;
+	        }
+	    }
+	} else {
+	    auto banks_per_channel = config_.bankgroups * config_.banks_per_group;
+	    // For reads in distributed MC, instead of iterating over all elements in a 
+	    // single read queue, we check signle entry queues per bank
+            for (auto i = 0; i < banks_per_channel; i++) {
+	        // Check if queue is empty
+	        if (per_bank_read_queue_[i].size() < 1) 
+	            continue;
+		// Sanity check
+		assert(per_bank_read_queue_[i] == 1);
+	        std::vector<Transaction> &queue = per_bank_read_queue_[i];
+		auto it = queue.begin();
+	        // for distributed memory controller design we should consider
+	        // the inerconnect latency.
+	        if (it->dist_link_start + config_.link_latency > clk_)
+	            continue;
+	        auto cmd = TransToCommand(*it);
+	        if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
+	                                         cmd.Bank())) {
+	    
+	            // update stats for all pending requests
+	            assert(!cmd.iswrite());
+	            auto num_requests = pending_rd_q_.count(cmd.hex_addr);
+	            while (num_requests > 0) {
+	                auto req = pending_rd_q_.find(cmd.hex_addr);
+	                req->second.schedule_cycle = clk_;
+	                simple_stats_.AddValue("command_queuing_latency", 
+	            	req->second.schedule_cycle - req->second.added_cycle);
+	                simple_stats_.AddValue("read_command_queuing_latency", 
+	            	req->second.schedule_cycle - req->second.added_cycle);
+	                num_requests -= 1;
+	            }
+	    
+	            cmd_queue_.AddCommand(cmd);
+	            queue.erase(it);
+	            break;
+	        }
+	    }
 	}
-        auto cmd = TransToCommand(*it);
-        if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
-                                         cmd.Bank())) {
-
-            // update stats for all pending requests
-            if (cmd.IsWrite()) {
-                auto num_requests = pending_wr_q_.count(cmd.hex_addr);
-                while (num_requests > 0) {
-                    auto req = pending_wr_q_.find(cmd.hex_addr);
-                    req->second.schedule_cycle = clk_;
-        	    simple_stats_.AddValue("command_queuing_latency", 
-            		req->second.schedule_cycle - req->second.added_cycle);
-        	    simple_stats_.AddValue("write_command_queuing_latency", 
-            		req->second.schedule_cycle - req->second.added_cycle);
-                    num_requests -= 1;
-		}
-            } else {
-                auto num_requests = pending_rd_q_.count(cmd.hex_addr);
-                while (num_requests > 0) {
-                    auto req = pending_rd_q_.find(cmd.hex_addr);
-                    req->second.schedule_cycle = clk_;
-        	    simple_stats_.AddValue("command_queuing_latency", 
-            		req->second.schedule_cycle - req->second.added_cycle);
-        	    simple_stats_.AddValue("read_command_queuing_latency", 
-            		req->second.schedule_cycle - req->second.added_cycle);
-                    num_requests -= 1;
-                }
-            }
-
-            if (!is_unified_queue_ && cmd.IsWrite()) {
-                // Enforce R->W dependency
-                if (pending_rd_q_.count(it->addr) > 0) {
-                    write_draining_ = 0;
-                    break;
-                }
-                write_draining_ -= 1;
-            }
-            cmd_queue_.AddCommand(cmd);
-            queue.erase(it);
-            break;
-        }
+    } else {
+	std::vector<Transaction> &queue =
+	    is_unified_queue_ ? unified_queue_
+	                      : write_draining_ > 0 ? write_buffer_ : read_queue_;
+	for (auto it = queue.begin(); it != queue.end(); it++) {
+	    auto cmd = TransToCommand(*it);
+	    if (cmd_queue_.WillAcceptCommand(cmd.Rank(), cmd.Bankgroup(),
+	                                     cmd.Bank())) {
+	
+	        // update stats for all pending requests
+	        if (cmd.IsWrite()) {
+	            auto num_requests = pending_wr_q_.count(cmd.hex_addr);
+	            while (num_requests > 0) {
+	                auto req = pending_wr_q_.find(cmd.hex_addr);
+	                req->second.schedule_cycle = clk_;
+	    	    simple_stats_.AddValue("command_queuing_latency", 
+	        		req->second.schedule_cycle - req->second.added_cycle);
+	    	    simple_stats_.AddValue("write_command_queuing_latency", 
+	        		req->second.schedule_cycle - req->second.added_cycle);
+	                num_requests -= 1;
+	    	    }
+	        } else {
+	            auto num_requests = pending_rd_q_.count(cmd.hex_addr);
+	            while (num_requests > 0) {
+	                auto req = pending_rd_q_.find(cmd.hex_addr);
+	                req->second.schedule_cycle = clk_;
+	    	    simple_stats_.AddValue("command_queuing_latency", 
+	        		req->second.schedule_cycle - req->second.added_cycle);
+	    	    simple_stats_.AddValue("read_command_queuing_latency", 
+	        		req->second.schedule_cycle - req->second.added_cycle);
+	                num_requests -= 1;
+	            }
+	        }
+	
+	        if (!is_unified_queue_ && cmd.IsWrite()) {
+	            // Enforce R->W dependency
+	            if (pending_rd_q_.count(it->addr) > 0) {
+	                write_draining_ = 0;
+	                break;
+	            }
+	            write_draining_ -= 1;
+	        }
+	        cmd_queue_.AddCommand(cmd);
+	        queue.erase(it);
+	        break;
+	    }
+	}
     }
 }
 
