@@ -427,9 +427,9 @@ void Controller::ScheduleTransaction() {
 	            while (num_requests > 0) {
 	                auto req = pending_wr_q_.find(cmd.hex_addr);
 	                req->second.schedule_cycle = clk_;
-	                simple_stats_.AddValue("command_queuing_latency", 
+	                simple_stats_.AddValue("queuing_latency", 
 	            	req->second.schedule_cycle - req->second.added_cycle);
-	                simple_stats_.AddValue("write_command_queuing_latency", 
+	                simple_stats_.AddValue("write_queuing_latency", 
 	            	req->second.schedule_cycle - req->second.added_cycle);
 	                num_requests -= 1;
 	            }
@@ -471,9 +471,9 @@ void Controller::ScheduleTransaction() {
 	            while (num_requests > 0) {
 	                auto req = pending_rd_q_.find(cmd.hex_addr);
 	                req->second.schedule_cycle = clk_;
-	                simple_stats_.AddValue("command_queuing_latency", 
+	                simple_stats_.AddValue("queuing_latency", 
 	            	req->second.schedule_cycle - req->second.added_cycle);
-	                simple_stats_.AddValue("read_command_queuing_latency", 
+	                simple_stats_.AddValue("read_queuing_latency", 
 	            	req->second.schedule_cycle - req->second.added_cycle);
 	                num_requests -= 1;
 	            }
@@ -499,9 +499,9 @@ void Controller::ScheduleTransaction() {
 	            while (num_requests > 0) {
 	                auto req = pending_wr_q_.find(cmd.hex_addr);
 	                req->second.schedule_cycle = clk_;
-	    	    simple_stats_.AddValue("command_queuing_latency", 
+	    	    simple_stats_.AddValue("queuing_latency", 
 	        		req->second.schedule_cycle - req->second.added_cycle);
-	    	    simple_stats_.AddValue("write_command_queuing_latency", 
+	    	    simple_stats_.AddValue("write_queuing_latency", 
 	        		req->second.schedule_cycle - req->second.added_cycle);
 	                num_requests -= 1;
 	    	    }
@@ -510,9 +510,9 @@ void Controller::ScheduleTransaction() {
 	            while (num_requests > 0) {
 	                auto req = pending_rd_q_.find(cmd.hex_addr);
 	                req->second.schedule_cycle = clk_;
-	    	    simple_stats_.AddValue("command_queuing_latency", 
+	    	    simple_stats_.AddValue("queuing_latency", 
 	        		req->second.schedule_cycle - req->second.added_cycle);
-	    	    simple_stats_.AddValue("read_command_queuing_latency", 
+	    	    simple_stats_.AddValue("read_queuing_latency", 
 	        		req->second.schedule_cycle - req->second.added_cycle);
 	                num_requests -= 1;
 	            }
@@ -553,9 +553,9 @@ void Controller::IssueCommand(const Command &cmd) {
         while (num_reads > 0) {
             auto it = pending_rd_q_.find(cmd.hex_addr);
             it->second.issue_cycle = clk_;
-    	    simple_stats_.AddValue("queuing_latency", 
+    	    simple_stats_.AddValue("command_queuing_latency", 
 		it->second.issue_cycle - it->second.schedule_cycle);
-    	    simple_stats_.AddValue("read_queuing_latency", 
+    	    simple_stats_.AddValue("read_command_queuing_latency", 
 		it->second.issue_cycle - it->second.schedule_cycle);
 	    // sanity check to make sure we are recording schedule_cycle
 	    assert(it->second.schedule_cycle != 0);
@@ -572,9 +572,9 @@ void Controller::IssueCommand(const Command &cmd) {
             exit(1);
         }
         it->second.issue_cycle = clk_;
-    	simple_stats_.AddValue("queuing_latency", 
+    	simple_stats_.AddValue("command_queuing_latency", 
 		it->second.issue_cycle - it->second.schedule_cycle);
-    	simple_stats_.AddValue("write_queuing_latency", 
+    	simple_stats_.AddValue("write_command_queuing_latency", 
 		it->second.issue_cycle - it->second.schedule_cycle);
 	// sanity check to make sure we are recording schedule_cycle
 	assert(it->second.schedule_cycle != 0);
