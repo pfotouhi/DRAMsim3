@@ -274,7 +274,6 @@ bool Controller::AddTransaction(Transaction trans) {
             if (pending_wr_q_.count(trans.addr) > 0) {
                 trans.complete_cycle = clk_ + 1;
                 return_queue_.push_back(trans);
-		// ADD read_queue_lat and read_command queue lat
                 return true;
             }
             pending_rd_q_.insert(std::make_pair(trans.addr, trans));
@@ -373,7 +372,6 @@ void Controller::QueueIn() {
                 // if in write buffer, use the write buffer value
                 if (pending_wr_q_.count(trans.addr) > 0) {
                     trans.complete_cycle = clk_ + 1;
-		    // ADD read_queue_lat and read_command queue lat
                     return_queue_.push_back(trans);
                 } else {
     		    auto read_addr = config_.AddressMapping(trans.addr);
@@ -421,7 +419,7 @@ void Controller::ScheduleTransaction() {
 	                                         cmd.Bank())) {
 	    
 	            // update stats for all pending requests
-	            assert(cmd.iswrite());
+	            assert(cmd.IsWrite());
 	            auto num_requests = pending_wr_q_.count(cmd.hex_addr);
 		    assert(num_requests == 1); // if this does not fail remove the whole things
 	            while (num_requests > 0) {
@@ -454,7 +452,7 @@ void Controller::ScheduleTransaction() {
 	        if (per_bank_read_queue_[i].size() < 1) 
 	            continue;
 		// Sanity check
-		assert(per_bank_read_queue_[i] == 1);
+		assert(per_bank_read_queue_[i].size() == 1);
 	        std::vector<Transaction> &queue = per_bank_read_queue_[i];
 		auto it = queue.begin();
 	        // for distributed memory controller design we should consider
@@ -466,7 +464,7 @@ void Controller::ScheduleTransaction() {
 	                                         cmd.Bank())) {
 	    
 	            // update stats for all pending requests
-	            assert(!cmd.iswrite());
+	            assert(!cmd.IsWrite());
 	            auto num_requests = pending_rd_q_.count(cmd.hex_addr);
 	            while (num_requests > 0) {
 	                auto req = pending_rd_q_.find(cmd.hex_addr);
@@ -550,9 +548,24 @@ void Controller::IssueCommand(const Command &cmd) {
             exit(1);
         }
         // if there are multiple reads pending return them all
+	uint64_t pre_schedule_cycle = 0;
         while (num_reads > 0) {
             auto it = pending_rd_q_.find(cmd.hex_addr);
             it->second.issue_cycle = clk_;
+	    // Taking care of transactions added to pending read queue
+	    // after the command is scheduled. Their schedule_cycle would 
+	    // be zero and we need to use value from another pending request. 
+	    if (it->second.schedule_cycle != 0) {
+		// This is the first pending entry for this address
+		if (pre_schedule_cycle == 0) 
+		    pre_schedule_cycle = it->second.schedule_cycle;
+		// For the rest of entries, they should have the same value
+		// for schedule_cycle
+		else
+		    assert(pre_schedule_cycle == it->second.schedule_cycle);
+	    } else {
+		it->second.schedule_cycle = pre_schedule_cycle;
+	    }
     	    simple_stats_.AddValue("command_queuing_latency", 
 		it->second.issue_cycle - it->second.schedule_cycle);
     	    simple_stats_.AddValue("read_command_queuing_latency", 
